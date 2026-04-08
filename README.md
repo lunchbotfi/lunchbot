@@ -38,7 +38,7 @@ Choose your setup and copy the commands into your terminal.
 
 ```bash
 # 1) Install the CLI
-npm install -g @lunchbotfi/lunchbot-cli
+npm install -g @lunchbot/lunchbot-cli
 
 # 2) Add the LunchBot skill to your agent
 npx skills add lunchbotfi/lunchbot
@@ -53,7 +53,7 @@ Then just ask your agent naturally:
 
 ```bash
 # Install
-npm install -g @lunchbotfi/lunchbot-cli
+npm install -g @lunchbot/lunchbot-cli
 
 # Run
 lunchbot

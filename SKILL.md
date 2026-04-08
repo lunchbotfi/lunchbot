@@ -59,7 +59,7 @@ vegetable curry, and pea soup."* Don't just dump the raw list at the user.
 
 ```bash
 # Install
-npm install -g @lunchbotfi/lunchbot-cli
+npm install -g @lunchbot/lunchbot-cli
 
 # Today's menus (all equivalent)
 lunchbot

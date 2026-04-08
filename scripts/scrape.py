@@ -303,6 +303,11 @@ class LunchScraper:
             return translate_to_english(dishes)
         return dishes
 
+    @staticmethod
+    def _clean(text: str) -> str:
+        """Collapse internal newlines and runs of whitespace into a single space."""
+        return " ".join(text.split())
+
     def _fill_missing(self, out: dict, msg: str = "No menu found") -> dict:
         """Ensure every week date has an entry."""
         for date in self._week_date_set:
@@ -327,7 +332,7 @@ class LunchScraper:
                 if date not in self._week_date_set:
                     continue
                 dishes = [
-                    c.strip()
+                    self._clean(c)
                     for menu in day_data.get("SetMenus", [])
                     for c in menu.get("Components", [])
                     if c.strip()
@@ -356,8 +361,8 @@ class LunchScraper:
                 items = []
                 for lunch in day.get("lunches", []):
                     # Both "en" and "fi" keys exist in the response
-                    title = lunch.get("title", {}).get(self.lang, "").strip()
-                    desc  = lunch.get("description", {}).get(self.lang, "").strip()
+                    title = self._clean(lunch.get("title", {}).get(self.lang, ""))
+                    desc  = self._clean(lunch.get("description", {}).get(self.lang, ""))
                     if title:
                         items.append(f"{title} ({desc})" if desc else title)
                 out[date] = items or ["No menu found"]
@@ -445,7 +450,7 @@ class LunchScraper:
                         continue
 
                     for line in txt.split("\n"):
-                        line = line.strip()
+                        line = self._clean(line)
                         if (len(line) > 5
                                 and target not in line.upper()
                                 and "SÄHKÖPOSTI" not in line.upper()
@@ -477,7 +482,7 @@ class LunchScraper:
         try:
             res  = requests.get(self.OIKEUS_URL, headers=self._headers, timeout=10)
             soup = BeautifulSoup(res.text, "lxml")
-            lines = [ln.strip() for ln in soup.get_text("\n").split("\n") if ln.strip()]
+            lines = [self._clean(ln) for ln in soup.get_text("\n").split("\n") if ln.strip()]
 
             current_day: str | None = None
             buffer: list            = []

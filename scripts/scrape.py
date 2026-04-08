@@ -589,7 +589,7 @@ class LunchScraper:
 # ── Pretty printers ───────────────────────────────────────────────────────────
 
 def _lang_badge(lang: str) -> str:
-    return "🇫🇮  Finnish" if lang == "fi" else "🇬🇧  English"
+    return "Finnish" if lang == "fi" else "English"
 
 
 def print_today(meta: dict, restaurants: dict):

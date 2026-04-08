@@ -1,0 +1,23 @@
+{
+  "type": "function",
+  "function": {
+    "name": "get_lunch_menus",
+    "description": "Fetch today's lunch menus from Helsinki-area restaurants (Compass, Factory, Luncher, Oikeus networks). Call this whenever the user asks what's for lunch, wants today's menu, or asks about nearby restaurant options.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "restaurant": {
+          "type": "string",
+          "description": "Optional: partial name of a specific restaurant to filter results (e.g. 'Roihu', 'Factory', 'Dylan'). Omit to get all restaurants."
+        },
+        "format": {
+          "type": "string",
+          "enum": ["pretty", "json"],
+          "default": "pretty",
+          "description": "Output format. 'pretty' for human-readable text, 'json' for raw structured data."
+        }
+      },
+      "required": []
+    }
+  }
+}

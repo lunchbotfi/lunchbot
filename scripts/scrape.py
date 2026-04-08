@@ -269,6 +269,11 @@ class LunchScraper:
         }
         self._week_date_set = set(self.week_dates.values())
 
+        # Is the requested date in the current calendar week?
+        # HTML scrapers (Factory, Oikeus) only have current-week data.
+        real_monday         = real_today - timedelta(days=real_today.weekday())
+        self.is_current_week = (monday == real_monday)
+
         # Compile a single pattern matching any weekday name in any language
         self._day_re = re.compile(
             "|".join(d for days in self.WEEKDAY_MAP.values() for d in days),
@@ -298,10 +303,10 @@ class LunchScraper:
             return translate_to_english(dishes)
         return dishes
 
-    def _fill_missing(self, out: dict) -> dict:
+    def _fill_missing(self, out: dict, msg: str = "No menu found") -> dict:
         """Ensure every week date has an entry."""
         for date in self._week_date_set:
-            out.setdefault(date, ["No menu found"])
+            out.setdefault(date, [msg])
         return out
 
     # ── Compass ───────────────────────────────────────────────────────────────
@@ -375,20 +380,12 @@ class LunchScraper:
     def fetch_factory(self, name: str, url: str) -> dict:
         """
         Returns {date_iso: [dishes]} in the requested language.
-
-        Page structure (both Ruoholahti and Salmisaari):
-          <h3>Maanantai 6.4.2026</h3>   Finnish day headings first
-          <p>dish line 1\ndish line 2</p>
-          <h3>Tiistai 7.4.2026</h3>
-          ...
-          <h3>Monday 6.4.2026</h3>       English day headings below
-          <p>dish line 1\ndish line 2</p>
-          <h3>Tuesday 7.4.2026</h3>
-
-        Strategy: find ALL h3 tags, locate the one for the target day/language,
-        then collect text from every sibling until the next h3. Avoids the
-        fragile find_next() tree-walk entirely.
+        Only works for the current week — Factory pages show no historical menus.
         """
+        # HTML page only ever shows the current week's menu
+        if not self.is_current_week:
+            return self._fill_missing({}, msg="Not available for this date — Factory only publishes the current week's menu")
+
         out = {}
         try:
             res  = requests.get(url, headers=self._headers, timeout=10)
@@ -471,7 +468,11 @@ class LunchScraper:
     # FI mode → return raw Finnish text.
 
     def fetch_oikeus(self) -> dict:
-        """Returns {date_iso: [dishes]} for the full week."""
+        """Returns {date_iso: [dishes]} for the full week.
+        Only works for the current week — Oikeus page shows no historical menus."""
+        # HTML page only ever shows the current week's menu
+        if not self.is_current_week:
+            return self._fill_missing({}, msg="Not available for this date — Oikeus only publishes the current week's menu")
         out = {}
         try:
             res  = requests.get(self.OIKEUS_URL, headers=self._headers, timeout=10)
@@ -702,6 +703,20 @@ examples:
             raise SystemExit(1)
 
     scraper    = LunchScraper(lang=lang, target_date=target_date)
+
+    # Warn immediately if the requested date is outside the current week
+    if not scraper.is_current_week:
+        from datetime import date as _date
+        real_monday = _date.today() - __import__('datetime').timedelta(days=_date.today().weekday())
+        real_friday = real_monday + __import__('datetime').timedelta(days=4)
+        print(
+            f"\n⚠️  Menus are only available for the current week "
+            f"({real_monday.isoformat()} → {real_friday.isoformat()}).\n"
+            f"   The requested date {scraper.today_iso} is outside this range.\n"
+            f"   HTML-based restaurants (Factory, Oikeus) will show no data.\n"
+            f"   API-based restaurants (Compass, Luncher) may also return nothing.\n",
+            file=__import__('sys').stderr
+        )
     all_data   = scraper.scrape_all(filter_name=args.restaurant)
     scraped_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 

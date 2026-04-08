@@ -53,6 +53,8 @@ const jsonOut = restArgs.includes("--json");
 const finnish = restArgs.includes("--finnish");
 const rIdx    = restArgs.findIndex(a => a === "-r" || a === "--restaurant");
 const rName   = rIdx !== -1 ? restArgs[rIdx + 1] : null;
+const dIdx    = restArgs.findIndex(a => a === "-d" || a === "--date");
+const dVal    = dIdx !== -1 ? restArgs[dIdx + 1] : null;
 
 ensureDeps();
 
@@ -61,6 +63,7 @@ const pyArgs = [cmd];
 if (jsonOut) pyArgs.push("--json");
 if (finnish) pyArgs.push("--finnish");
 if (rName)   pyArgs.push("--restaurant", rName);
+if (dVal)    pyArgs.push("--date", dVal);
 
 try {
   const result = execFileSync("python3", [SCRIPT, ...pyArgs], {

@@ -30,24 +30,37 @@ When a user asks about lunch in natural language, run the scraper and answer
 conversationally. You do **not** need to show raw CLI commands to the user —
 just fetch the data and present it clearly.
 
+> **⚠️ Menu availability:** Restaurants only publish menus for the **current week**.
+> Next week's and last week's menus are not available. If a user asks about
+> next week or last week, politely explain this and offer to show this week's
+> menus instead.
+
 **Example user requests and how to handle them:**
 
 | User says | What to do |
 |---|---|
 | "What's for lunch today?" | Run scraper for today, all restaurants |
-| "What's for lunch at Roihu?" | Run scraper with `--restaurant "Roihu"` |
-| "Show me this week's menus" | Run scraper with `week` command |
+| "What's for lunch tomorrow?" | Run with `--date tomorrow` |
+| "What was lunch yesterday?" | Run with `--date yesterday` |
+| "What's for lunch on Friday?" | Run with `--date friday` |
+| "What's for lunch at Roihu?" | Run with `--restaurant "Roihu"` |
+| "Show me this week's menus" | Run with `week` command |
 | "What's on at Factory this week in Finnish?" | Run `week --restaurant "Factory" --finnish` |
 | "Any vegetarian options today?" | Fetch all, filter dishes containing VE/vegan markers |
+| "What's for lunch next week?" | ❌ Explain menus are only available for the current week |
+| "What was on the menu last week?" | ❌ Explain menus are only available for the current week |
 
 **Run the scraper:**
 ```bash
 python scripts/scrape.py today                              # today, all restaurants
-python scripts/scrape.py today --restaurant "Roihu"        # today, one restaurant
-python scripts/scrape.py week                               # full Mon–Fri week
-python scripts/scrape.py week --restaurant "Factory"       # week, one restaurant
-python scripts/scrape.py today --finnish                    # today in Finnish
-python scripts/scrape.py today --json                       # raw JSON if needed
+python scripts/scrape.py today --date tomorrow              # tomorrow
+python scripts/scrape.py today --date friday                # this Friday
+python scripts/scrape.py today --date yesterday             # yesterday
+python scripts/scrape.py today --date 2026-04-10            # exact ISO date
+python scripts/scrape.py today --restaurant "Roihu"         # filter restaurant
+python scripts/scrape.py week                               # full this week
+python scripts/scrape.py today --finnish                    # Finnish
+python scripts/scrape.py today --json                       # raw JSON
 ```
 
 Parse the output and respond naturally — e.g. *"Today at Roihu: grilled salmon,

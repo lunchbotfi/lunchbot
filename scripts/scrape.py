@@ -11,15 +11,17 @@ LANGUAGE BEHAVIOUR PER SOURCE:
               (no English version available for Oikeus)
 
 CLI USAGE:
-  lunchbot                                         # today, English, pretty
-  lunchbot today / list                            # same as above
-  lunchbot week                                    # Mon–Fri, English, pretty
-  lunchbot --finnish                               # today, Finnish, pretty
-  lunchbot week --finnish                          # Mon–Fri, Finnish
-  lunchbot --restaurant "Roihu"                   # filter by restaurant
-  lunchbot week --restaurant "Roihu" --finnish    # combine freely
-  lunchbot --json                                  # raw JSON (any combo)
-  lunchbot week --restaurant "Roihu" --json
+  lunchbot                                              # today, English, pretty
+  lunchbot today / list                                 # same as above
+  lunchbot week                                         # Mon–Fri this week, pretty
+  lunchbot --date tomorrow                              # specific day
+  lunchbot --date friday                                # this or next Friday
+  lunchbot --date yesterday                             # previous working day
+  lunchbot --date 2026-04-10                            # exact ISO date
+  lunchbot week --date next monday                      # week containing that date
+  lunchbot --finnish                                    # today, Finnish, pretty
+  lunchbot --restaurant "Roihu" --date tomorrow        # combine freely
+  lunchbot --json                                       # raw JSON (any combo)
 """
 
 import argparse
@@ -89,6 +91,93 @@ def translate_to_english(texts: list) -> list:
     return results
 
 
+
+# ── Date resolver ─────────────────────────────────────────────────────────────
+
+def resolve_date(expr: str, today: "datetime.date | None" = None) -> "datetime.date":
+    """
+    Resolve a natural-language date expression to a concrete date.
+
+    Accepted forms (case-insensitive):
+      today, tomorrow, yesterday
+      monday … friday          → nearest occurrence (today or future first,
+                                  then look back up to 6 days)
+      next monday … next friday → the occurrence in the NEXT calendar week
+      last monday … last friday → the occurrence in the PREVIOUS calendar week
+      YYYY-MM-DD               → parsed directly
+
+    Raises ValueError for unrecognised input.
+    """
+    from datetime import date as _date, timedelta as _td
+    if today is None:
+        today = _date.today()
+
+    expr = expr.strip().lower()
+
+    # Exact ISO date
+    try:
+        return datetime.strptime(expr, "%Y-%m-%d").date()
+    except ValueError:
+        pass
+
+    # Named relative days
+    if expr == "today":
+        return today
+    if expr in ("tomorrow", "tmr", "tmrw"):
+        return today + _td(days=1)
+    if expr == "yesterday":
+        return today - _td(days=1)
+
+    # Weekday names with optional "next" / "last" prefix
+    DAY_NAMES = {
+        "monday": 0, "tuesday": 1, "wednesday": 2,
+        "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6,
+        # Finnish shortcuts in case agent passes them
+        "maanantai": 0, "tiistai": 1, "keskiviikko": 2,
+        "torstai": 3, "perjantai": 4,
+    }
+
+    prefix = None
+    name   = expr
+    if expr.startswith("next "):
+        prefix = "next"
+        name   = expr[5:].strip()
+    elif expr.startswith("last "):
+        prefix = "last"
+        name   = expr[5:].strip()
+
+    if name in DAY_NAMES:
+        target_wd = DAY_NAMES[name]
+        today_wd  = today.weekday()
+
+        if prefix == "next":
+            # Always the occurrence in the next calendar week
+            days_to_monday = (7 - today_wd) % 7 or 7
+            next_monday    = today + _td(days=days_to_monday)
+            return next_monday + _td(days=target_wd)
+
+        if prefix == "last":
+            # Always the occurrence in the previous calendar week
+            this_monday = today - _td(days=today_wd)
+            last_monday = this_monday - _td(days=7)
+            return last_monday + _td(days=target_wd)
+
+        # No prefix → nearest occurrence: today/future first, then look back
+        diff = (target_wd - today_wd) % 7
+        candidate = today + _td(days=diff)
+        if diff == 0:
+            return candidate          # it IS today
+        # If it would be in the future, check if it was more recently in the past
+        past = candidate - _td(days=7)
+        # Prefer future over past (natural "Friday" = this coming Friday)
+        return candidate
+
+    raise ValueError(
+        f"Unrecognised date expression: {expr!r}\n"
+        "Try: today, tomorrow, yesterday, monday…friday, "
+        "next friday, last monday, YYYY-MM-DD"
+    )
+
 # ── LunchScraper ──────────────────────────────────────────────────────────────
 
 class LunchScraper:
@@ -153,22 +242,27 @@ class LunchScraper:
     # Words that signal end-of-menu in Oikeus / Factory pages
     _STOP_WORDS = frozenset({"HINNAT", "PRICES", "NORDREST", "AU KIOLO"})
 
-    def __init__(self, lang: str = "en"):
+    def __init__(self, lang: str = "en", target_date=None):
         """
-        lang: "en" (default) or "fi"
-          - "en": APIs queried in English; Finnish-only HTML pages auto-translated.
-          - "fi": APIs queried in Finnish; HTML pages returned as-is.
+        lang:        "en" (default) or "fi"
+        target_date: a datetime.date to anchor the week on (default: today).
+                     The scraper always fetches the full Mon–Fri week that
+                     contains target_date, then slices to that date for
+                     single-day views.
         """
         assert lang in ("en", "fi"), "lang must be 'en' or 'fi'"
         self.lang = lang
 
-        self.now        = datetime.now()
-        self.today_iso  = self.now.strftime("%Y-%m-%d")
-        self.day_en     = self.now.strftime("%A")
+        self.now       = datetime.now()
+        real_today     = self.now.date()
+        anchor         = target_date if target_date is not None else real_today
 
-        # ISO dates for Mon–Fri of the current calendar week
-        today  = self.now.date()
-        monday = today - timedelta(days=today.weekday())
+        self.today_iso = anchor.isoformat()          # the "day of interest"
+        self.day_en    = anchor.strftime("%A")
+        self.real_today_iso = real_today.isoformat() # actual today for ◀ TODAY marker
+
+        # ISO dates for Mon–Fri of the week containing anchor
+        monday = anchor - timedelta(days=anchor.weekday())
         self.week_dates     = {
             day: (monday + timedelta(days=i)).isoformat()
             for i, day in enumerate(self.WEEKDAYS)
@@ -494,7 +588,10 @@ def _lang_badge(lang: str) -> str:
 
 def print_today(meta: dict, restaurants: dict):
     badge = _lang_badge(meta["lang"])
-    print(f"\n🍽  LUNCH — {meta['day'].upper()}  {meta['date']}  [{badge}]")
+    date_label = meta["date"]
+    day_label  = meta["day"].upper()
+    today_mark = "  ◀ TODAY" if meta["date"] == meta["real_today"] else ""
+    print(f"\n🍽  LUNCH — {day_label}  {date_label}{today_mark}  [{badge}]")
     print("─" * 54)
     for name in sorted(restaurants):
         print(f"\n  📍 {name}")
@@ -511,7 +608,7 @@ def print_week(meta: dict, week: dict):
     print("═" * 54)
     for day_en, day_data in week.items():
         date     = day_data["date"]
-        is_today = date == meta["today"]
+        is_today = date == meta["real_today"]
         marker   = "  ◀ TODAY" if is_today else ""
         print(f"\n  ┌{'─' * 50}┐")
         print(f"  │  {day_en.upper():12}  {date}{marker:<10}│")
@@ -544,17 +641,17 @@ options:
 examples:
   lunchbot
   lunchbot today
-  lunchbot list
   lunchbot week
-  lunchbot --finnish
-  lunchbot week --finnish
-  lunchbot --restaurant "Roihu"
-  lunchbot week --restaurant "Factory"
-  lunchbot week --restaurant "Roihu" --finnish
+  lunchbot --date tomorrow
+  lunchbot --date friday
+  lunchbot --date yesterday
+  lunchbot --date "next monday"
+  lunchbot --date 2026-04-10
+  lunchbot week --date "next monday"
+  lunchbot --restaurant "Roihu" --date tomorrow
+  lunchbot --finnish --date friday
   lunchbot --json
-  lunchbot week --json
-  lunchbot --restaurant "Roihu" --finnish --json
-  lunchbot week --restaurant "Roihu" --finnish --json
+  lunchbot week --date "next monday" --restaurant "Factory" --finnish --json
 """,
     )
     parser.add_argument(
@@ -576,21 +673,42 @@ examples:
         help="Show menus in Finnish instead of English",
     )
     parser.add_argument(
+        "--date", "-d",
+        dest="date",
+        metavar="DATE",
+        default=None,
+        help=(
+            "Date to query: today, tomorrow, yesterday, "
+            "monday…friday, next friday, last monday, YYYY-MM-DD. "
+            "Defaults to today."
+        ),
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         help="Output raw JSON instead of pretty text",
     )
 
-    args    = parser.parse_args()
-    lang    = "fi" if args.finnish else "en"
-    scraper = LunchScraper(lang=lang)
+    args = parser.parse_args()
+    lang = "fi" if args.finnish else "en"
 
+    # Resolve --date expression to a concrete date
+    target_date = None
+    if args.date:
+        try:
+            target_date = resolve_date(args.date)
+        except ValueError as e:
+            print(f"❌ {e}", flush=True)
+            raise SystemExit(1)
+
+    scraper    = LunchScraper(lang=lang, target_date=target_date)
     all_data   = scraper.scrape_all(filter_name=args.restaurant)
     scraped_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     week_dates_list = list(scraper.week_dates.values())
     meta = {
-        "today":      scraper.today_iso,
+        "today":      scraper.today_iso,       # requested date (may differ from real today)
+        "real_today": scraper.real_today_iso,  # actual today, for ◀ TODAY marker
         "day":        scraper.day_en,
         "lang":       lang,
         "week_start": week_dates_list[0],

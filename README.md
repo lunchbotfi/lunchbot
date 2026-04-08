@@ -90,6 +90,23 @@ lunchbot --restaurant "Roihu"
 lunchbot week --restaurant "Factory"
 ```
 
+### Query by date
+
+*"What's for lunch tomorrow?"*
+*"What was lunch yesterday?"*
+*"What's on Friday?"*
+
+```bash
+lunchbot --date tomorrow
+lunchbot --date yesterday
+lunchbot --date friday          # this coming Friday
+lunchbot --date 2026-04-10      # exact date (ISO format)
+```
+
+> **Note:** Menus are only published for the current week. Queries for next week
+> or last week will return "No menu found" as the restaurants don't publish
+> in advance or keep historical menus.
+
 ### Finnish menus
 
 *"Näytä tämän viikon lounaslistat suomeksi"*
